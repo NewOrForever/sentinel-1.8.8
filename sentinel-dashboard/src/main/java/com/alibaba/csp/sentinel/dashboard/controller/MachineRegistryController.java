@@ -40,6 +40,23 @@ public class MachineRegistryController {
     @Autowired
     private AppManagement appManagement;
 
+    /**
+     * 解释一个有趣的现象：
+     * 重启sentinel 客户端（app 服务）后
+     * 1. sentinel 控制台一直报 MetricFetcher   : Failed to fetch metric from ...
+     * 2. 重启后的客户端一直不调用 /registry/machine 接口进行 machine 的注册
+     * 3. 客户端断点 com.alibaba.csp.sentinel.transport.heartbeat.SimpleHttpHeartbeatSender#sendHeartbeat() 也一直没发现去调用 /registry/machine 发送心跳包
+     * 原因：重启的那个客户端离线了，没有发心跳包过来
+     * 客户端没有启用 spring.cloud.sentinel.eager，所以默认是懒加载，需要 在初次调用后（调用一次限流的接口）才会开始向控制台发送心跳包
+     * spring.cloud.sentinel.eager 设为true 就没这个现象了
+     *
+     * 再解释下另一个有趣的现象：
+     * 我的机器内网地址明明是 192.168.50.31，但是发送心跳包时发送的 ip 是 10.211.1.170
+     * 原因：我开了 VPN，导致获取到的的 IP 是 VPN 的 IP
+     * com.alibaba.csp.sentinel.transport.heartbeat.HeartbeatMessage#HeartbeatMessage()
+     * -> com.alibaba.csp.sentinel.transport.config.TransportConfig#getHeartbeatClientIp()
+     * -> com.alibaba.csp.sentinel.util.HostNameUtil#resolveHost()
+     */
     @ResponseBody
     @RequestMapping("/machine")
     public Result<?> receiveHeartBeat(String app,
