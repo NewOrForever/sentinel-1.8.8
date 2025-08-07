@@ -19,15 +19,20 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.alibaba.csp.sentinel.dashboard.datasource.entity.rule.RuleEntity;
 import com.alibaba.csp.sentinel.dashboard.discovery.MachineInfo;
 import com.alibaba.csp.sentinel.util.AssertUtil;
+import com.alibaba.nacos.common.utils.CollectionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author leyou
  */
 public abstract class InMemoryRuleRepositoryAdapter<T extends RuleEntity> implements RuleRepository<T, Long> {
+    private final Logger logger = LoggerFactory.getLogger(InMemoryRuleRepositoryAdapter.class);
 
     /**
      * {@code <machine, <id, rule>>}
@@ -38,6 +43,14 @@ public abstract class InMemoryRuleRepositoryAdapter<T extends RuleEntity> implem
     private Map<String, Map<Long, T>> appRules = new ConcurrentHashMap<>(16);
 
     private static final int MAX_RULES_SIZE = 10000;
+
+    /**
+     * 从 AtomicBoolean 升级成 ConcurrentHashMap<String, AtomicBoolean>
+     * 1. 保证每个app只初始化一次
+     * 2. 保证每个app的初始化状态是独立的，避免多个app同时初始化时，一个app初始化完成后，另一个app的初始化状态被置为true
+     */
+    private final ConcurrentHashMap<String, AtomicBoolean> appInitMap = new ConcurrentHashMap<>(16);
+
 
     @Override
     public T save(T entity) {
@@ -126,4 +139,25 @@ public abstract class InMemoryRuleRepositoryAdapter<T extends RuleEntity> implem
      * @return next unused id
      */
     abstract protected long nextId();
+
+
+    public void initRules(List<T> rules, String app) {
+        logger.debug("{}初始化规则状态：{} ----------> {}" , app,
+                appInitMap.getOrDefault(app, new AtomicBoolean(false)), this.getClass().getSimpleName());
+        AtomicBoolean appHasInit = appInitMap.computeIfAbsent(app, v -> new AtomicBoolean(false));
+        if (appHasInit.compareAndSet(false, true)) {
+            logger.debug("{}开始初始化规则 ......" , app);
+            List<T> initSaRuleveds = saveAll(rules);
+            if (CollectionUtils.isNotEmpty(initSaRuleveds)) {
+                // ids 需要更新数据为最大的id
+                initSaRuleveds.stream().mapToLong(RuleEntity::getId).max().ifPresent(maxId -> {
+                    initIds(maxId);
+                    logger.debug("{}初始化规则完成，最大id为：{}" , app, maxId);
+                });
+            }
+        }
+    }
+
+    abstract protected void initIds(long maxId);
+
 }
