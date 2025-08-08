@@ -21,6 +21,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.nacos.api.PropertyKeyConst;
 import com.alibaba.nacos.api.config.ConfigFactory;
 import com.alibaba.nacos.api.config.ConfigService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -94,12 +95,16 @@ public class NacosConfig {
         return s -> JSON.parseArray(s, SystemRuleEntity.class);
     }
 
+    @Value("${nacos.config.serverAddress}")
+    private String nacosServerAddress;
+    @Value("${nacos.config.namespace}")
+    private String nacosNamespace;
     @Bean
     public ConfigService nacosConfigService() throws Exception {
         // ConfigFactory.createConfigService("123.60.150.23:8848");
         Properties properties = new Properties();
-        properties.put(PropertyKeyConst.SERVER_ADDR, "192.168.50.171:8848");
-        properties.put(PropertyKeyConst.NAMESPACE, "3e9cf74e-264e-4f39-831a-e8597ce28cfa");
+        properties.put(PropertyKeyConst.SERVER_ADDR, nacosServerAddress);
+        properties.put(PropertyKeyConst.NAMESPACE, nacosNamespace);
         return ConfigFactory.createConfigService(properties);
     }
 }
